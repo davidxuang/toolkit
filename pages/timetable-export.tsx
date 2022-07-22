@@ -8,6 +8,7 @@ import { Select } from '@fluentui/react-components/unstable';
 
 import { luaifyTimetable, parseTimetableCRT } from '../tools/timetable';
 import FluentCodeBlock from '../components/FluentCodeBlock';
+import Head from 'next/head';
 
 const styles = makeStyles({
   main: {
@@ -71,6 +72,10 @@ const TimetableExport: NextPage = () => {
 
   return (
     <div>
+      <Head>
+        <title>Wikipedia时刻表导出</title>
+      </Head>
+
       <main className={classes.main}>
         <div className={classes.actionsBar}>
           <Select>
