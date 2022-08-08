@@ -1,12 +1,16 @@
 import axios from 'axios';
 import wcwidth from 'wcwidth';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { NextPage } from 'next';
-import { Button, makeStyles, Spinner } from '@fluentui/react-components';
+import { Button, makeStyles } from '@fluentui/react-components';
 import { Select } from '@fluentui/react-components/unstable';
 
-import { luaifyTimetable, parseTimetableCRT } from '../tools/timetable';
+import {
+  luaifyTimetable,
+  parseLines,
+  parseTimetable,
+} from '../tools/timetable';
 import FluentCodeBlock from '../components/FluentCodeBlock';
 import Head from 'next/head';
 
@@ -37,37 +41,57 @@ const styles = makeStyles({
 
 const TimetableExport: NextPage = () => {
   const classes = styles();
-  let originPage = useRef<Document>();
 
-  const [ready, setReady] = useState(false);
-  const [lineId, setLineId] = useState('');
-  const [luaString, setLuaString] = useState('');
+  const [system, setSystem] = useState('CRT');
+  const [page, setPage] = useState<Document>();
+  const [lines, setLines] = useState<[string, string][]>();
+  const [line, setLine] = useState('');
+  const [lua, setLua] = useState('');
 
-  useEffect(() => {
-    setLineId('9');
-    axios
-      .get(
-        'https://corsproxy.io/?https%3A%2F%2Fwww.cqmetro.cn%2Friding-guide.html'
+  const systemPages: { [key: string]: string } = {
+    CRT: 'https://www.cqmetro.cn/riding-guide.html',
+  };
+  const corsProxies = [
+    'https://api.allorigins.win/get?url=',
+    'https://corsproxy.io/?',
+  ];
+
+  const onSelectSystem = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSystem(e.target.value);
+    setLines([]);
+  };
+
+  const onDownload = async () => {
+    Promise.any(
+      corsProxies.map((prefix) =>
+        axios.get(prefix + encodeURIComponent(systemPages[system]))
       )
-      .then((response) => {
-        originPage.current = new DOMParser().parseFromString(
+    ).then((response) => {
+      let _page: Document;
+      if (response.headers['content-type'].startsWith('application/json')) {
+        _page = new DOMParser().parseFromString(
+          response.data.contents,
+          'text/html'
+        );
+      } else {
+        _page = new DOMParser().parseFromString(
           response.data as string,
           'text/html'
         );
-        setReady(true);
-      });
-  }, []);
+      }
+      setPage(_page);
+      let _lines = parseLines[system](_page!);
+      setLines(_lines);
+      setLine(_lines?.[0]?.[0] ?? '');
+    });
+  };
 
   const onExport = async () => {
-    let table = originPage.current!.querySelector(
-      'div.result-line-time-list > table#clay10_' + lineId
-    )! as HTMLTableElement;
-
-    let timetable = parseTimetableCRT(table);
+    let timetable = parseTimetable[system](page!, line);
 
     let namePad =
       Math.max(...[...timetable.keys()].map((str) => wcwidth(str))) + 4;
-    setLuaString(luaifyTimetable(timetable, namePad));
+    setLua(luaifyTimetable(timetable, namePad));
   };
 
   return (
@@ -78,28 +102,25 @@ const TimetableExport: NextPage = () => {
 
       <main className={classes.main}>
         <div className={classes.actionsBar}>
-          <Select>
+          <Select onChange={onSelectSystem}>
             <option value="CRT">重庆轨道交通</option>
           </Select>
           <div></div>
-          <Select onChange={(e) => setLineId(e.target.value)}>
-            <option value="9">环线</option>
-            <option value="1">1号线</option>
-            <option value="2">2号线</option>
-            <option value="3">3号线</option>
-            <option value="4">4号线</option>
-            <option value="5">5号线</option>
-            <option value="6">6号线</option>
-            <option value="7">国博线</option>
-            <option value="10">9号线</option>
-            <option value="8">10号线</option>
+          <Button onClick={onDownload}>下载</Button>
+          <div></div>
+          <Select onChange={(e) => setLine(e.target.value)}>
+            {lines?.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
           </Select>
           <div></div>
-          <Button onClick={onExport} disabled={!ready}>
-            {ready ? '导出' : <Spinner size="tiny" />}
+          <Button onClick={onExport} disabled={page == undefined}>
+            导出
           </Button>
         </div>
-        <FluentCodeBlock language="lua">{luaString}</FluentCodeBlock>
+        <FluentCodeBlock language="lua">{lua}</FluentCodeBlock>
       </main>
     </div>
   );
