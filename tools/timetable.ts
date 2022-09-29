@@ -10,40 +10,46 @@ type TimeByOrientation = TimeByTerminal[];
 type TimeByDay = TimeByOrientation[];
 type Timetable = Map<string, TimeByDay[]>;
 
-const compareNestedStringArray = (x: NestedStringArray, y: NestedStringArray): boolean => {
+const compareNestedStringArray = (
+  x: NestedStringArray,
+  y: NestedStringArray
+): boolean => {
   if (x instanceof Array) {
     if (x.length != y.length) {
-      return false
+      return false;
     } else {
-      return x.filter((v, i) =>
-        !compareNestedStringArray(v, y[i])
-      ).length == 0
+      return x.filter((v, i) => !compareNestedStringArray(v, y[i])).length == 0;
     }
   } else {
-    return x === y
+    return x === y;
   }
-}
+};
 
 const deduplicateDays = (timetable: Timetable) => {
-  let dedup = true
+  let dedup = true;
   timetable.forEach((days) => {
     if (days.length > 1) {
       days.slice(1).forEach((day) => {
         if (!compareNestedStringArray(days[0], day)) {
-          console.log('---')
-          console.log(days[0])
-          console.log(day)
-          dedup = false
+          console.log('---');
+          console.log(days[0]);
+          console.log(day);
+          dedup = false;
         }
-      })
+      });
     }
-  })
+  });
   if (dedup) {
-    return new Map(Array.from(timetable.entries()).map(([station, days]) => [station, [days[0]]]))
+    return new Map(
+      Array.from(timetable.entries()).map(([station, days]) => [
+        station,
+        [days[0]],
+      ])
+    );
   } else {
-    return timetable
+    return timetable;
   }
-}
+};
 
 const luaifyNestedStringArray = (
   array: NestedStringArray,
@@ -53,6 +59,8 @@ const luaifyNestedStringArray = (
     return `{ ${array
       .map((child) => luaifyNestedStringArray(child, padding))
       .join(', ')} }`;
+  } else if (array == 'nil') {
+    return pad(padding, `nil`);
   } else {
     return pad(padding, `'${array}'`);
   }
@@ -68,27 +76,30 @@ const luaifyTimetable = (timetable: Timetable, padding: number) => {
   timetable = deduplicateDays(timetable);
   return `		{ 
 			stations = ${luaifyNestedStringArray([...timetable.keys()])},
+      data = {
 ${Array.from(timetable)
-      .map(
-        ([key, value]) =>
-          `			${pad(`['${key}']`, padding)} = ${luaifyNestedStringArray(value, 7)},`
-      )
-      .join('\n')}
+  .map(
+    ([key, value]) =>
+      `				${pad(`['${key}']`, padding)} = ${luaifyNestedStringArray(value, 7)},`
+  )
+  .join('\n')}
+      }
 		}`;
-}
+};
 
-const parseLines: { [system: string]: (page: Document) => [string, string][] } = {
-  CRT: (page: Document) => {
-    return Array.from(page.querySelector('div.result-line-list')?.childNodes!)
-      .filter((elem) => (elem as HTMLDivElement).id)
-      .map((elem) => {
-        return [
-          (elem as HTMLDivElement).id.substring(9),
-          (elem as HTMLDivElement).innerText.trim()
-        ]
-      })
-  }
-}
+const parseLines: { [system: string]: (page: Document) => [string, string][] } =
+  {
+    CRT: (page) => {
+      return Array.from(page.querySelector('div.result-line-list')?.childNodes!)
+        .filter((elem) => (elem as HTMLDivElement).id)
+        .map((elem) => {
+          return [
+            (elem as HTMLDivElement).id.substring(9),
+            (elem as HTMLDivElement).innerText.trim(),
+          ];
+        });
+    },
+  };
 
 const getItemsTextByIndex = (
   items: HTMLElement[],
@@ -98,12 +109,12 @@ const getItemsTextByIndex = (
 ) => {
   if (indices instanceof Array) {
     return indices.map((index) =>
-      items[index + offset].innerHTML.trim().replace('--', closed ? '-' : '')
+      items[index + offset].innerHTML.trim().replace('--', closed ? 'nil' : '')
     );
   } else {
     return items[indices + offset].innerHTML
       .trim()
-      .replace('--', closed ? '-' : '');
+      .replace('--', closed ? 'nil' : '');
   }
 };
 
@@ -119,8 +130,10 @@ type IndicesByTerminal = [
  * @param table 时刻表HTML表格对象
  * @returns 时刻表对象
  */
-const parseTimetable: { [system: string]: (page: Document, line: string) => Timetable } = {
-  CRT: (page: Document, line: string): Timetable => {
+const parseTimetable: {
+  [system: string]: (page: Document, line: string) => Timetable;
+} = {
+  CRT: (page, line): Timetable => {
     let table = page!.querySelector(
       'div.result-line-time-list > table#clay10_' + line
     )! as HTMLTableElement;
@@ -132,11 +145,11 @@ const parseTimetable: { [system: string]: (page: Document, line: string) => Time
     );
 
     if (days.length == 0) {
-      days = [ document.createElement('th') ]
+      days = [document.createElement('th')];
       days[0].colSpan = groups.map((g) => g.colSpan).reduce((p, c) => p + c, 0);
     }
 
-    console.log(days.length)
+    console.log(days.length);
 
     if (![1, 2].includes(days.length)) {
       throw days.length;
@@ -205,16 +218,17 @@ const parseTimetable: { [system: string]: (page: Document, line: string) => Time
     let timetable: Timetable = new Map();
 
     for (var row of rows) {
-      let name = row[0].innerHTML.trim();
+      let name = row[0].innerHTML.trim().replace('航站楼', '');
       if (!name || name == '--') {
         break;
       }
 
       timetable.set(
-        row[0].innerHTML.trim(),
+        name,
         dayOffsets.map((offset) => {
           let closed = // 判断车站是否关闭
-            row.slice(1).filter((cell) => cell.innerHTML.trim().length > 2).length == 0;
+            row.slice(1).filter((cell) => cell.innerHTML.trim().length > 2)
+              .length == 0;
           return [
             [
               getItemsTextByIndex(row, indices[0], offset, closed),
@@ -230,7 +244,7 @@ const parseTimetable: { [system: string]: (page: Document, line: string) => Time
     }
 
     return timetable;
-  }
-}
+  },
+};
 
 export { luaifyTimetable, parseLines, parseTimetable };
